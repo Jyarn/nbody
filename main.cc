@@ -3,6 +3,8 @@
 #include <raylib.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <chrono>
+#include <string>
 
 #define G 6.67e-11
 
@@ -26,6 +28,8 @@ typedef struct {
     double smoothing;
     double clamp_radius;
     int render_after_n_frames;
+    double weight_multiplier;
+    double discard;
 } Simulator_Params;
 
 double
@@ -44,13 +48,15 @@ one_step(Particle* particles, const Simulator_Params* params)
             if (i != j) {
                 Particle part_i = particles[i];
                 Particle part_j = particles[j];
-                double mass = part_j.mass;
 
                 Vector r;
                 r.x = part_j.position.x - part_i.position.x;
                 r.y = part_j.position.y - part_i.position.y ;
+                if (r.x > params->discard && r.y > params->discard)
+                    continue;
 
-                double r_norm = norm(r) < params->clamp_radius ? params->clamp_radius : norm(r);
+                double mass = part_j.mass;
+                double r_norm = norm(r) + params->smoothing;
                 double r_norm_cubed = r_norm * r_norm * r_norm;
 
                 particles[i].acceleration.x += G * mass * r.x / r_norm_cubed;
@@ -83,17 +89,17 @@ int
 main(void)
 {
     Simulator_Params params = {
-        .n_particles = 20,
-        .time_step = 0.01,
+        .n_particles = 3,
+        .time_step = 0.1,
         .seed = 1000,
-        .screen_x = 500,
-        .screen_y = 500,
-        .obj_x_max = 500,
-        .obj_y_max = 500,
-        .object_radius = 10,
-        .smoothing = 5,
-        .clamp_radius = 0.5,
-        .render_after_n_frames = 5,
+        .screen_x = 1920,
+        .screen_y = 1080,
+        .obj_x_max = 1920,
+        .obj_y_max = 1080,
+        .object_radius = 20,
+        .smoothing = 10,
+        .render_after_n_frames = 20,
+        .discard = 1000,
     };
 
     srand(params.seed);
@@ -108,12 +114,13 @@ main(void)
     InitWindow(params.screen_x, params.screen_y, "nbody");
     SetTargetFPS(10000);
 
-    int i = 0;
+    auto tm = std::chrono::high_resolution_clock::now();
+    auto dur = tm.time_since_epoch();
+
     while (!WindowShouldClose()) {
         BeginDrawing();
         ClearBackground(RAYWHITE);
         for (int j = 0; j < params.n_particles; j++) {
-            //print_particle(particles, j, i);
             DrawCircle((int)particles[j].position.x, (int)particles[j].position.y, params.object_radius, DARKBLUE);
         }
 
