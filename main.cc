@@ -24,6 +24,7 @@ typedef struct {
     int obj_x_max, obj_y_max;
     int object_radius;
     double smoothing;
+    double clamp_radius;
     int render_after_n_frames;
 } Simulator_Params;
 
@@ -49,7 +50,7 @@ one_step(Particle* particles, const Simulator_Params* params)
                 r.x = part_j.position.x - part_i.position.x;
                 r.y = part_j.position.y - part_i.position.y ;
 
-                double r_norm = norm(r) + params->smoothing;
+                double r_norm = norm(r) < params->clamp_radius ? params->clamp_radius : norm(r);
                 double r_norm_cubed = r_norm * r_norm * r_norm;
 
                 particles[i].acceleration.x += G * mass * r.x / r_norm_cubed;
@@ -90,8 +91,9 @@ main(void)
         .obj_x_max = 500,
         .obj_y_max = 500,
         .object_radius = 10,
-        .smoothing = 10,
-        .render_after_n_frames = 50,
+        .smoothing = 5,
+        .clamp_radius = 0.5,
+        .render_after_n_frames = 5,
     };
 
     srand(params.seed);
@@ -111,7 +113,7 @@ main(void)
         BeginDrawing();
         ClearBackground(RAYWHITE);
         for (int j = 0; j < params.n_particles; j++) {
-            print_particle(particles, j, i);
+            //print_particle(particles, j, i);
             DrawCircle((int)particles[j].position.x, (int)particles[j].position.y, params.object_radius, DARKBLUE);
         }
 
