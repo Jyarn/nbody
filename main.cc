@@ -23,14 +23,14 @@ typedef struct {
     int screen_x, screen_y;
     int obj_x_max, obj_y_max;
     int object_radius;
+    double smoothing;
+    int render_after_n_frames;
 } Simulator_Params;
 
 double
-norm(Vector i, Vector j)
+norm(Vector i)
 {
-    double delta_x = i.x - j.x;
-    double delta_y = i.y - j.y;
-    return std::sqrt(delta_x*delta_x + delta_y*delta_y);
+    return std::sqrt(i.x*i.x + i.y*i.y);
 }
 
 void
@@ -49,7 +49,7 @@ one_step(Particle* particles, const Simulator_Params* params)
                 r.x = part_j.position.x - part_i.position.x;
                 r.y = part_j.position.y - part_i.position.y ;
 
-                double r_norm = norm(part_i.position, part_j.position);
+                double r_norm = norm(r) + params->smoothing;
                 double r_norm_cubed = r_norm * r_norm * r_norm;
 
                 particles[i].acceleration.x += G * mass * r.x / r_norm_cubed;
@@ -70,25 +70,28 @@ one_step(Particle* particles, const Simulator_Params* params)
 void
 print_particle(Particle* particles, int j, int i)
 {
-    printf("%d: mass = %f, acc = <%f, %f>, vel = <%f, %f>, pos = (%f, %f)\n",
-            i, particles[j].mass,
-            particles[j].acceleration.x, particles[j].acceleration.y,
-            particles[j].velocity.x, particles[j].velocity.y,
-            particles[j].position.x, particles[j].position.y);
+    if (norm(particles[j].acceleration) > 0.1)
+        printf("%d: mass = %f, acc = <%f, %f>, vel = <%f, %f>, pos = (%f, %f)\n",
+                i, particles[j].mass,
+                particles[j].acceleration.x, particles[j].acceleration.y,
+                particles[j].velocity.x, particles[j].velocity.y,
+                particles[j].position.x, particles[j].position.y);
 }
 
 int
 main(void)
 {
     Simulator_Params params = {
-        .n_particles = 2,
-        .time_step = 0.1,
+        .n_particles = 20,
+        .time_step = 0.01,
         .seed = 1000,
         .screen_x = 500,
         .screen_y = 500,
-        .obj_x_max = 100,
-        .obj_y_max = 100,
-        .object_radius = 5,
+        .obj_x_max = 500,
+        .obj_y_max = 500,
+        .object_radius = 10,
+        .smoothing = 10,
+        .render_after_n_frames = 50,
     };
 
     srand(params.seed);
@@ -101,17 +104,21 @@ main(void)
     }
 
     InitWindow(params.screen_x, params.screen_y, "nbody");
+    SetTargetFPS(10000);
 
+    int i = 0;
     while (!WindowShouldClose()) {
         BeginDrawing();
         ClearBackground(RAYWHITE);
         for (int j = 0; j < params.n_particles; j++) {
+            print_particle(particles, j, i);
             DrawCircle((int)particles[j].position.x, (int)particles[j].position.y, params.object_radius, DARKBLUE);
         }
 
         EndDrawing();
 
-        one_step(particles, &params);
+        for (int i = 0; i < params.render_after_n_frames; i++)
+            one_step(particles, &params);
     }
 
     CloseWindow();
