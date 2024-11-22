@@ -4,85 +4,90 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <chrono>
-#include <string>
+#include <assert.h>
+#include <stdint.h>
 
-#define G 6.67e-11
+#include "common.h"
+#include "Particle.h"
+#include "equations.h"
 
-typedef struct {
-    double x, y;
-} Vector;
-
-typedef struct {
-    Vector velocity, position, acceleration;
-    double mass;
-} Particle;
-
-typedef struct {
-    int n_particles;
-    int n_steps;
-    double time_step;
-    int seed;
-    int screen_x, screen_y;
-    int obj_x_max, obj_y_max;
-    int object_radius;
-    double smoothing;
-    double clamp_radius;
-    int render_after_n_frames;
-    double weight_multiplier;
-    double discard;
-} Simulator_Params;
-
-double
-norm(Vector i)
+void
+compute_acceleration_for_bucket(Particle_Bucket* bucket, Particle* part_i, double smooth)
 {
-    return std::sqrt(i.x*i.x + i.y*i.y);
+    assert(part_i);
+    if (bucket) {
+        Particle* part_j = *bucket;
+        while (part_j) {
+            if (part_j != part_i)
+                calculate_acceleration(part_i, part_j, smooth);
+
+            assert(part_j->next != part_j);
+            part_j = part_j->next;
+        }
+    }
 }
 
 void
-one_step(Particle* particles, const Simulator_Params* params)
+one_step(Particles* particles, Particle* part_arr, Simulator_Params* params)
 {
-    for (int i = 0; i < params->n_particles; i++) {
-        particles[i].acceleration.x = 0;
-        particles[i].acceleration.y = 0;
-        for (int j = 0; j < params->n_particles; j++) {
-            if (i != j) {
-                Particle part_i = particles[i];
-                Particle part_j = particles[j];
+    // bucket_cache[y][x];
+    Particle_Bucket* bucket_cache[3][3];
+    for (int x = 0; x < params->n_cells_x; x++) {
+        for (int y = 0; y < params->n_cells_y; y++) {
+            bucket_cache[0][0] = get_bucket(params, particles, x-1, y-1);
+            bucket_cache[0][1] = get_bucket(params, particles, x, y-1);
+            bucket_cache[0][2] = get_bucket(params, particles, x+1, y-1);
 
-                Vector r;
-                r.x = part_j.position.x - part_i.position.x;
-                r.y = part_j.position.y - part_i.position.y ;
-                if (r.x > params->discard && r.y > params->discard)
-                    continue;
+            bucket_cache[1][0] = get_bucket(params, particles, x-1, y);
+            bucket_cache[1][1] = get_bucket(params, particles, x, y);
+            bucket_cache[1][2] = get_bucket(params, particles, x+1, y);
 
-                double mass = part_j.mass;
-                double r_norm = norm(r) + params->smoothing;
-                double r_norm_cubed = r_norm * r_norm * r_norm;
+            bucket_cache[2][0] = get_bucket(params, particles, x-1, y+1);
+            bucket_cache[2][1] = get_bucket(params, particles, x, y+1);
+            bucket_cache[2][2] = get_bucket(params, particles, x+1, y+1);
 
-                particles[i].acceleration.x += G * mass * r.x / r_norm_cubed;
-                particles[i].acceleration.y += G * mass * r.y / r_norm_cubed;
+            assert(bucket_cache[1][1]);
+
+            Particle* part_i;
+
+            if ((part_i = *bucket_cache[1][1])) {
+                while (part_i) {
+                    part_i->acceleration.x = 0; part_i->acceleration.y = 0;
+
+                    for (int i = 0; i < 3; i++)
+                        for (int j = 0; j < 3; j++)
+                            compute_acceleration_for_bucket(bucket_cache[i][j], part_i, params->smoothing);
+                    part_i = part_i->next;
+                }
             }
         }
     }
 
     for (int i = 0; i < params->n_particles; i++) {
-        particles[i].velocity.x += params->time_step * particles[i].acceleration.x;
-        particles[i].velocity.y += params->time_step * particles[i].acceleration.y;
+        // if particle is not in a grid ignore it
+        int x_index = BUCKET_X(part_arr[i].position.x);
+        int y_index = BUCKET_Y(part_arr[i].position.y);
 
-        particles[i].position.x += params->time_step * particles[i].velocity.x;
-        particles[i].position.y += params->time_step * particles[i].velocity.y;
+        if (0 <= x_index && x_index < params->n_cells_x && 0 <= y_index && y_index < params->n_cells_y) {
+            part_arr[i].velocity.x += params->time_step * part_arr[i].acceleration.x;
+            part_arr[i].velocity.y += params->time_step * part_arr[i].acceleration.y;
+
+            double new_x = part_arr[i].position.x + params->time_step * part_arr[i].velocity.x;
+            double new_y = part_arr[i].position.y + params->time_step * part_arr[i].velocity.y;
+            move_particle(particles, &part_arr[i], params, new_x, new_y);
+        }
+
     }
 }
 
 void
 print_particle(Particle* particles, int j, int i)
 {
-    if (norm(particles[j].acceleration) > 0.1)
-        printf("%d: mass = %f, acc = <%f, %f>, vel = <%f, %f>, pos = (%f, %f)\n",
-                i, particles[j].mass,
-                particles[j].acceleration.x, particles[j].acceleration.y,
-                particles[j].velocity.x, particles[j].velocity.y,
-                particles[j].position.x, particles[j].position.y);
+    printf("%d: mass = %f, acc = <%f, %f>, vel = <%f, %f>, pos = (%f, %f)\n",
+            i, particles[j].mass,
+            particles[j].acceleration.x, particles[j].acceleration.y,
+            particles[j].velocity.x, particles[j].velocity.y,
+            particles[j].position.x, particles[j].position.y);
 }
 
 int
@@ -92,22 +97,36 @@ main(void)
         .n_particles = 3,
         .time_step = 0.1,
         .seed = 1000,
+
         .screen_x = 1920,
         .screen_y = 1080,
-        .obj_x_max = 1920,
-        .obj_y_max = 1080,
+
         .object_radius = 20,
-        .smoothing = 10,
+        .smoothing = 0.1,
+
         .render_after_n_frames = 20,
-        .discard = 1000,
+
+        .n_cells_x = 1,
+        .n_cells_y = 1,
+        .grid_length = 1000
     };
 
     srand(params.seed);
     Particle* particles = new Particle[params.n_particles];
+    Particles part_hash_map;
+    part_hash_map.buckets = new Particle*[params.n_cells_x * params.n_cells_y];
+    for (int i = 0; i < params.n_cells_y*params.n_cells_x; i++)
+        part_hash_map.buckets[i] = NULL;
 
     for (int i = 0; i < params.n_particles; i++) {
-        particles[i].position.x = rand() % params.obj_x_max - (double)params.obj_x_max / 2 + (double)params.screen_x / 2;
-        particles[i].position.y = rand() % params.obj_y_max - (double)params.obj_y_max / 2 + (double)params.screen_y / 2;
+        particles[i].position.x = static_cast<double>(rand() % (static_cast<int>(params.grid_length) * params.n_cells_x));
+        particles[i].position.y = static_cast<double>(rand() % (static_cast<int>(params.grid_length) * params.n_cells_y));
+        particles[i].velocity.x = 0;
+        particles[i].velocity.y = 0;
+        particles[i].prev = NULL;
+        particles[i].next = NULL;
+
+        insert_particle(&part_hash_map, &particles[i], &params);
         particles[i].mass = rand();
     }
 
@@ -118,8 +137,10 @@ main(void)
     auto dur = tm.time_since_epoch();
 
     while (!WindowShouldClose()) {
-        BeginDrawing();
-        ClearBackground(RAYWHITE);
+//    for (uint64_t i = 0; i < 100000000; i++) {
+
+       BeginDrawing();
+       ClearBackground(RAYWHITE);
         for (int j = 0; j < params.n_particles; j++) {
             DrawCircle((int)particles[j].position.x, (int)particles[j].position.y, params.object_radius, DARKBLUE);
         }
@@ -127,7 +148,7 @@ main(void)
         EndDrawing();
 
         for (int i = 0; i < params.render_after_n_frames; i++)
-            one_step(particles, &params);
+            one_step(&part_hash_map, particles, &params);
     }
 
     CloseWindow();
