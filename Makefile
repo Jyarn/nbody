@@ -1,7 +1,7 @@
 EXE=nbody
 OBJ=main.o Particle.o equations.o
 CC=g++
-CXXFLAGS=-g -fopenmp
+CXXFLAGS=-O3 -fopenmp
 LDFLAGS=-lraylib
 
 run: $(EXE)

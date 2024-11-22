@@ -30,33 +30,20 @@ compute_acceleration_for_bucket(Particle_Bucket* bucket, Particle* part_i, doubl
 void
 one_step(Particles* particles, Particle* part_arr, Simulator_Params* params)
 {
-    // bucket_cache[y][x];
-    Particle_Bucket* bucket_cache[3][3];
     for (int x = 0; x < params->n_cells_x; x++) {
         for (int y = 0; y < params->n_cells_y; y++) {
-            bucket_cache[0][0] = get_bucket(params, particles, x-1, y-1);
-            bucket_cache[0][1] = get_bucket(params, particles, x, y-1);
-            bucket_cache[0][2] = get_bucket(params, particles, x+1, y-1);
-
-            bucket_cache[1][0] = get_bucket(params, particles, x-1, y);
-            bucket_cache[1][1] = get_bucket(params, particles, x, y);
-            bucket_cache[1][2] = get_bucket(params, particles, x+1, y);
-
-            bucket_cache[2][0] = get_bucket(params, particles, x-1, y+1);
-            bucket_cache[2][1] = get_bucket(params, particles, x, y+1);
-            bucket_cache[2][2] = get_bucket(params, particles, x+1, y+1);
-
-            assert(bucket_cache[1][1]);
+            Particle_Bucket* this_bucket = get_bucket(params, particles, x, y);
+            assert(this_bucket);
 
             Particle* part_i;
 
-            if ((part_i = *bucket_cache[1][1])) {
+            if ((part_i = *this_bucket)) {
                 while (part_i) {
                     part_i->acceleration.x = 0; part_i->acceleration.y = 0;
 
                     for (int i = 0; i < 3; i++)
                         for (int j = 0; j < 3; j++)
-                            compute_acceleration_for_bucket(bucket_cache[i][j], part_i, params->smoothing);
+                            compute_acceleration_for_bucket(get_bucket(params, particles, x+i-1, y+i-1), part_i, params->smoothing);
                     part_i = part_i->next;
                 }
             }
@@ -80,41 +67,34 @@ one_step(Particles* particles, Particle* part_arr, Simulator_Params* params)
     }
 }
 
-void
-print_particle(Particle* particles, int j, int i)
-{
-    printf("%d: mass = %f, acc = <%f, %f>, vel = <%f, %f>, pos = (%f, %f)\n",
-            i, particles[j].mass,
-            particles[j].acceleration.x, particles[j].acceleration.y,
-            particles[j].velocity.x, particles[j].velocity.y,
-            particles[j].position.x, particles[j].position.y);
-}
-
 int
 main(void)
 {
     Simulator_Params params = {
-        .n_particles = 3,
+        .n_particles = 2000,
         .time_step = 0.1,
         .seed = 1000,
 
         .screen_x = 1920,
         .screen_y = 1080,
 
-        .object_radius = 20,
-        .smoothing = 0.1,
+        .object_radius = 10,
+        .smoothing = 1,
 
-        .render_after_n_frames = 20,
-
-        .n_cells_x = 1,
-        .n_cells_y = 1,
-        .grid_length = 1000
+        .n_cells_x = 16,
+        .n_cells_y = 9,
+        .grid_length = 150
     };
 
     srand(params.seed);
     Particle* particles = new Particle[params.n_particles];
+
     Particles part_hash_map;
     part_hash_map.buckets = new Particle*[params.n_cells_x * params.n_cells_y];
+
+    InitWindow(params.screen_x, params.screen_y, "nbody");
+    SetTargetFPS(10000);
+
     for (int i = 0; i < params.n_cells_y*params.n_cells_x; i++)
         part_hash_map.buckets[i] = NULL;
 
@@ -130,25 +110,16 @@ main(void)
         particles[i].mass = rand();
     }
 
-    InitWindow(params.screen_x, params.screen_y, "nbody");
-    SetTargetFPS(10000);
+    for (int i = 0; i < 60000; i++) {
+        BeginDrawing();
+        ClearBackground(BLACK);
 
-    auto tm = std::chrono::high_resolution_clock::now();
-    auto dur = tm.time_since_epoch();
-
-    while (!WindowShouldClose()) {
-//    for (uint64_t i = 0; i < 100000000; i++) {
-
-       BeginDrawing();
-       ClearBackground(RAYWHITE);
-        for (int j = 0; j < params.n_particles; j++) {
+        for (int j = 0; j < params.n_particles; j++)
             DrawCircle((int)particles[j].position.x, (int)particles[j].position.y, params.object_radius, DARKBLUE);
-        }
 
         EndDrawing();
 
-        for (int i = 0; i < params.render_after_n_frames; i++)
-            one_step(&part_hash_map, particles, &params);
+        one_step(&part_hash_map, particles, &params);
     }
 
     CloseWindow();
