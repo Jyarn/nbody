@@ -2,7 +2,6 @@
 #include <stdbool.h>
 
 #include "common.h"
-#include "io.h"
 
 // assumes we have a variable of type Simulator_Params* named params in scope
 #define BUCKET_X(x) (static_cast<int>(x) / params->grid_length)

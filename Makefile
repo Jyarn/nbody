@@ -1,13 +1,16 @@
 EXE=nbody
-OBJ=main.o Particle.o equations.o
-CC=g++
-CXXFLAGS=-O3 -fopenmp
+OBJ=main.o Particle.o equations.o io.o
+CC=mpic++
+CXXFLAGS=-g
 LDFLAGS=-lraylib
 
-run: $(EXE)
-	./$(EXE)
-
 build: $(EXE)
+
+debug:
+	mpirun -np 4 alacritty -e gdb ./$(EXE)
+
+run: $(EXE)
+	mpirun -n 4 ./$(EXE)
 
 $(EXE): $(OBJ)
 	$(CC) $(CXXFLAGS) $(LDFLAGS) $(OBJ) -o $(EXE)

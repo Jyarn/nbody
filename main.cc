@@ -5,12 +5,12 @@
 #include <stdio.h>
 #include <assert.h>
 #include <stdint.h>
+#include <mpi.h>
 
 #include "common.h"
 #include "Particle.h"
 #include "equations.h"
-
-Extent partition_extent;
+#include "io.h"
 
 void
 compute_acceleration_for_bucket(Particle_Bucket* bucket, Particle* part_i, double smooth)
@@ -31,7 +31,7 @@ compute_acceleration_for_bucket(Particle_Bucket* bucket, Particle* part_i, doubl
 }
 
 void
-one_step(Particles* particles, Particle* part_arr, Simulator_Params* params)
+one_step(Particles* particles, Particle* part_arr, Simulator_Params* params, Extent partition_extent)
 {
     for (int x = 0; x < params->n_cells_x; x++) {
         for (int y = 0; y < params->n_cells_y; y++) {
@@ -71,7 +71,7 @@ one_step(Particles* particles, Particle* part_arr, Simulator_Params* params)
 }
 
 int
-main(void)
+main(int argc, char** argv)
 {
     Simulator_Params params = {
         .n_particles = 3,
@@ -84,36 +84,40 @@ main(void)
         .object_radius = 10,
         .smoothing = 1,
 
-        .n_cells_x = 1,
-        .n_cells_y = 1,
-        .grid_length = 1000,
+        .n_cells_x = 16,
+        .n_cells_y = 9,
+        .grid_length = 120,
     };
 
-    partition_extent.x = 0;
-    partition_extent.y = 0;
-    partition_extent.w = params.grid_length * params.n_cells_x;
-    partition_extent.h = params.grid_length * params.n_cells_y;
+    MPI_Init(&argc, &argv);
+
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+    Extent partition_extent, depend_extent;
+    sync_init(&params, &partition_extent, &depend_extent);
 
     srand(params.seed);
-    Particle* particles = new Particle[params.n_particles];
+    Particle* particles = new Particle[params.n_particles*4];
 
     Particles part_hash_map;
     part_hash_map.buckets = new Particle*[params.n_cells_x * params.n_cells_y];
 
-    InitWindow(params.screen_x, params.screen_y, "nbody");
-    SetTargetFPS(10000);
-
-    for (int i = 0; i < params.n_cells_y*params.n_cells_x; i++)
+    for (int i = 0; i < params.n_cells_y * params.n_cells_x; i++)
         part_hash_map.buckets[i] = NULL;
 
-    for (int i = 0; i < params.n_particles; i++) {
-        particles[i].position.x = static_cast<double>(rand() % (static_cast<int>(params.grid_length) * params.n_cells_x));
-        particles[i].position.y = static_cast<double>(rand() % (static_cast<int>(params.grid_length) * params.n_cells_y));
+    for (int i = 0; i < params.n_particles*4; i++) {
+        particles[i].invalid = true;
+    }
+
+    for (int i = params.n_particles*rank; i < params.n_particles; i++) {
+        particles[i].position.x = static_cast<double>((rand() % static_cast<int>(partition_extent.w)) + partition_extent.x);
+        particles[i].position.y = static_cast<double>((rand() % static_cast<int>(partition_extent.h)) + partition_extent.y);
         particles[i].velocity.x = 0;
         particles[i].velocity.y = 0;
         particles[i].prev = NULL;
         particles[i].next = NULL;
-        particles[i].invalid = true;
+        particles[i].invalid = false;
         particles[i].depend = false;
 
         insert_particle(&part_hash_map, &particles[i], &params, partition_extent);
@@ -121,17 +125,14 @@ main(void)
     }
 
     for (int i = 0; i < 10000000; i++) {
-        BeginDrawing();
-        ClearBackground(BLACK);
-
-        for (int j = 0; j < params.n_particles; j++)
-            DrawCircle((int)particles[j].position.x, (int)particles[j].position.y, params.object_radius, DARKBLUE);
-
-        EndDrawing();
-
-        one_step(&part_hash_map, particles, &params);
+        one_step(&part_hash_map, particles, &params, partition_extent);
+        sync_all(rank, particles, rank * params.n_particles,
+                params.n_particles, &part_hash_map, depend_extent,
+                partition_extent, &params);
+        printf("%d\n", i);
     }
 
-    CloseWindow();
+    MPI_Finalize();
+
     return 0;
 }
