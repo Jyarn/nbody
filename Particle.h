@@ -1,5 +1,8 @@
 #pragma once
+#include <stdbool.h>
+
 #include "common.h"
+#include "io.h"
 
 // assumes we have a variable of type Simulator_Params* named params in scope
 #define BUCKET_X(x) (static_cast<int>(x) / params->grid_length)
@@ -8,6 +11,7 @@
 typedef struct particle {
     Vector velocity, position, acceleration;
     double mass;
+    bool invalid;
     struct particle* next, *prev;
 } Particle;
 
@@ -21,13 +25,15 @@ typedef struct {
 Particle_Bucket* get_bucket(Simulator_Params* params, Particles* particles,
         int x, int y);
 
-Particle_Bucket* get_particle_bucket(Particles* particles,
-        Simulator_Params* params, double x, double y);
+Particle_Bucket* get_particle_bucket(Particles* particles, Particle* part,
+        Simulator_Params* params, Extent partition_extent);
 
 int insert_particle(Particles* particles, Particle* part,
-        Simulator_Params* params);
+        Simulator_Params* params, Extent partition_extent);
 
-void remove_particle(Particle* particle);
+void remove_particle(Particles* particles, Particle* part,
+        Simulator_Params* params, Extent partition_extent);
 
 void move_particle(Particles* particles, Particle* part,
-        Simulator_Params* params, double new_x, double new_y);
+        Simulator_Params* params, Extent partition_extent,
+        double new_x, double new_y);

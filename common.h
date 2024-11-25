@@ -19,3 +19,9 @@ typedef struct {
     double grid_length;
 } Simulator_Params;
 
+typedef struct {
+    double w, h, x, y;
+} Extent;
+
+#define IN_EXTENT_X(xx, extent) (extent.x <= xx && xx < extent.x + extent.w)
+#define IN_EXTENT_Y(yy, extent) (extent.y <= yy && yy < extent.y + extent.h)

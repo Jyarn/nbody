@@ -3,13 +3,14 @@
 #include <raylib.h>
 #include <unistd.h>
 #include <stdio.h>
-#include <chrono>
 #include <assert.h>
 #include <stdint.h>
 
 #include "common.h"
 #include "Particle.h"
 #include "equations.h"
+
+Extent partition_extent;
 
 void
 compute_acceleration_for_bucket(Particle_Bucket* bucket, Particle* part_i, double smooth)
@@ -51,17 +52,16 @@ one_step(Particles* particles, Particle* part_arr, Simulator_Params* params)
     }
 
     for (int i = 0; i < params->n_particles; i++) {
-        // if particle is not in a grid ignore it
-        int x_index = BUCKET_X(part_arr[i].position.x);
-        int y_index = BUCKET_Y(part_arr[i].position.y);
-
-        if (0 <= x_index && x_index < params->n_cells_x && 0 <= y_index && y_index < params->n_cells_y) {
+        if (!part_arr[i].invalid) {
             part_arr[i].velocity.x += params->time_step * part_arr[i].acceleration.x;
             part_arr[i].velocity.y += params->time_step * part_arr[i].acceleration.y;
 
             double new_x = part_arr[i].position.x + params->time_step * part_arr[i].velocity.x;
             double new_y = part_arr[i].position.y + params->time_step * part_arr[i].velocity.y;
-            move_particle(particles, &part_arr[i], params, new_x, new_y);
+            if (IN_EXTENT_X(new_x, partition_extent) && IN_EXTENT_Y(new_y, partition_extent))
+                move_particle(particles, &part_arr[i], params, partition_extent, new_x, new_y);
+            else
+                remove_particle(particles, &part_arr[i], params, partition_extent);
         }
 
     }
@@ -71,7 +71,7 @@ int
 main(void)
 {
     Simulator_Params params = {
-        .n_particles = 2000,
+        .n_particles = 3,
         .time_step = 0.1,
         .seed = 1000,
 
@@ -81,10 +81,15 @@ main(void)
         .object_radius = 10,
         .smoothing = 1,
 
-        .n_cells_x = 16,
-        .n_cells_y = 9,
-        .grid_length = 150
+        .n_cells_x = 1,
+        .n_cells_y = 1,
+        .grid_length = 1000,
     };
+
+    partition_extent.x = 0;
+    partition_extent.y = 0;
+    partition_extent.w = params.grid_length * params.n_cells_x;
+    partition_extent.h = params.grid_length * params.n_cells_y;
 
     srand(params.seed);
     Particle* particles = new Particle[params.n_particles];
@@ -105,12 +110,13 @@ main(void)
         particles[i].velocity.y = 0;
         particles[i].prev = NULL;
         particles[i].next = NULL;
+        particles[i].invalid = true;
 
-        insert_particle(&part_hash_map, &particles[i], &params);
+        insert_particle(&part_hash_map, &particles[i], &params, partition_extent);
         particles[i].mass = rand();
     }
 
-    for (int i = 0; i < 60000; i++) {
+    for (int i = 0; i < 10000000; i++) {
         BeginDrawing();
         ClearBackground(BLACK);
 
