@@ -16,6 +16,8 @@ void
 compute_acceleration_for_bucket(Particle_Bucket* bucket, Particle* part_i, double smooth)
 {
     assert(part_i);
+    assert(!part_i->depend);
+
     if (bucket) {
         Particle* part_j = *bucket;
         while (part_j) {
@@ -44,7 +46,8 @@ one_step(Particles* particles, Particle* part_arr, Simulator_Params* params)
 
                     for (int i = 0; i < 3; i++)
                         for (int j = 0; j < 3; j++)
-                            compute_acceleration_for_bucket(get_bucket(params, particles, x+i-1, y+i-1), part_i, params->smoothing);
+                            if (!part_i->depend)
+                                compute_acceleration_for_bucket(get_bucket(params, particles, x+i-1, y+i-1), part_i, params->smoothing);
                     part_i = part_i->next;
                 }
             }
@@ -111,6 +114,7 @@ main(void)
         particles[i].prev = NULL;
         particles[i].next = NULL;
         particles[i].invalid = true;
+        particles[i].depend = false;
 
         insert_particle(&part_hash_map, &particles[i], &params, partition_extent);
         particles[i].mass = rand();

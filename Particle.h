@@ -12,6 +12,7 @@ typedef struct particle {
     Vector velocity, position, acceleration;
     double mass;
     bool invalid;
+    bool depend;
     struct particle* next, *prev;
 } Particle;
 
