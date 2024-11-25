@@ -74,7 +74,7 @@ int
 main(int argc, char** argv)
 {
     Simulator_Params params = {
-        .n_particles = 3,
+        .n_particles = 2000,
         .time_step = 0.1,
         .seed = 1000,
 
@@ -84,8 +84,8 @@ main(int argc, char** argv)
         .object_radius = 10,
         .smoothing = 1,
 
-        .n_cells_x = 16,
-        .n_cells_y = 9,
+        .n_cells_x = 64,
+        .n_cells_y = 36,
         .grid_length = 120,
     };
 
@@ -95,7 +95,7 @@ main(int argc, char** argv)
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     Extent partition_extent, depend_extent;
-    sync_init(&params, &partition_extent, &depend_extent);
+    sync_init(rank, &params, &partition_extent, &depend_extent);
 
     srand(params.seed);
     Particle* particles = new Particle[params.n_particles*4];
@@ -108,6 +108,9 @@ main(int argc, char** argv)
 
     for (int i = 0; i < params.n_particles*4; i++) {
         particles[i].invalid = true;
+        particles[i].depend = false;
+        particles[i].position.x = -1;
+        particles[i].position.y = -1;
     }
 
     for (int i = params.n_particles*rank; i < params.n_particles; i++) {
@@ -117,19 +120,19 @@ main(int argc, char** argv)
         particles[i].velocity.y = 0;
         particles[i].prev = NULL;
         particles[i].next = NULL;
-        particles[i].invalid = false;
+        particles[i].invalid = true;
         particles[i].depend = false;
 
         insert_particle(&part_hash_map, &particles[i], &params, partition_extent);
         particles[i].mass = rand();
     }
 
-    for (int i = 0; i < 10000000; i++) {
+    for (int i = 0; i < 1000000; i++) {
+//        printf("rank %d: starting iteration %d\n", rank, i);
         one_step(&part_hash_map, particles, &params, partition_extent);
         sync_all(rank, particles, rank * params.n_particles,
                 params.n_particles, &part_hash_map, depend_extent,
                 partition_extent, &params);
-        printf("%d\n", i);
     }
 
     MPI_Finalize();
