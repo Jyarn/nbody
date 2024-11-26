@@ -174,6 +174,7 @@ init_particles(Particle* part_arr, Particles* part_hash_map, Extent partition_ex
             part_arr[i].next = NULL;
             part_arr[i].invalid = true;
             part_arr[i].depend = false;
+            part_arr[i].mass = 0;
         }
     }
 }
