@@ -1,7 +1,7 @@
 EXE=nbody_
 OBJ=main.o Particle.o equations.o io.o
 CC=mpic++
-CXXFLAGS=-g -Wall -Wextra -Wpedantic
+CXXFLAGS=-O3 -Wall -Wextra -Wpedantic
 LDFLAGS=
 
 build: $(EXE)

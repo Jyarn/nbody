@@ -33,26 +33,29 @@ sync_terminate_connection(int recv_rank)
 }
 
 int
-sync_send(Particle* part_arr, int n, int recv_rank,
-        Extent depend_extent, Extent recv_extent)
+sync_send(Particle* part_arr, int n, int recv_rank)
 {
     Particle part_i;
     Vector part_pos;
     int n_particles_lost = 0;
+
+    Extent partition_extent, depend_extent;
+    partition_extent = partition_extent_arr[recv_rank];
+    depend_extent = partition_extent_arr[recv_rank];
 
     for (int i = 0; i < n; i++) {
         part_i = part_arr[i];
         part_pos = part_i.position;
 
         // skip all valid and dependency particles
-        if (!part_i.invalid || part_i.depend) {
+        if (part_i.depend) {
             // assert to make sure we aren't skipping particles just because they have certain flags enabled
-            assert((part_i.invalid && !(IN_EXTENT_X(part_pos.x, recv_extent) && IN_EXTENT_Y(part_pos.y, recv_extent))) || !part_i.invalid);
+            assert((part_i.invalid && !(IN_EXTENT_X(part_pos.x, partition_extent) && IN_EXTENT_Y(part_pos.y, partition_extent))) || !part_i.invalid);
             assert((part_i.depend && (IN_EXTENT_X(part_pos.x, depend_extent) && IN_EXTENT_Y(part_pos.y, depend_extent))) || !part_i.depend);
             continue;
         }
 
-        if (IN_EXTENT_X(part_pos.x, recv_extent) && IN_EXTENT_Y(part_pos.y, recv_extent))
+        if (IN_EXTENT_X(part_pos.x, partition_extent) && IN_EXTENT_Y(part_pos.y, partition_extent))
         {
             assert(part_i.invalid);
             assert(!part_i.depend);
@@ -65,6 +68,10 @@ sync_send(Particle* part_arr, int n, int recv_rank,
             part_arr[i].position.y = -1;
 
             n_particles_lost++;
+
+        } else if (IN_EXTENT_X(part_pos.x, depend_extent) && IN_EXTENT_Y(part_pos.y, depend_extent)) {
+            assert(!part_i.invalid);
+            send_particle(i, part_i, recv_rank);
         }
     }
 
@@ -90,20 +97,22 @@ sync_receive_particle(Particle* part_arr, int sender_rank, int* index_ret, doubl
 }
 
 int
-sync_receive(Particle* part_arr, int particle_partition_start,
-        int particle_partition_len, Particles* particle_hash_map,
-        int sender_rank, Extent depend_extent, Extent recv_extent,
-        Simulator_Params* params)
+sync_receive(Particle* part_arr, Particles* particle_hash_map, int sender_rank,
+        int recv_rank, Simulator_Params* params)
 {
     int part_index = -1;
     double dbl_buf[6] = { 0, 0, 0, 0, 0, 0 };
     int n_particles_gained = 0;
 
+    Extent partition_extent, depend_extent;
+    partition_extent = partition_extent_arr[recv_rank];
+    depend_extent = depend_extent_arr[recv_rank];
+
     while (true) {
         if (!sync_receive_particle(part_arr, sender_rank, &part_index, dbl_buf))
             break;
 
-        if (IN_EXTENT_X(dbl_buf[SYNC_POS_X], recv_extent) && IN_EXTENT_Y(dbl_buf[SYNC_POS_Y], recv_extent))
+        if (IN_EXTENT_X(dbl_buf[SYNC_POS_X], partition_extent) && IN_EXTENT_Y(dbl_buf[SYNC_POS_Y], partition_extent))
         {
             assert(0 <= part_index && part_index < params->n_particles*4);
             assert(part_arr[part_index].invalid);
@@ -117,19 +126,22 @@ sync_receive(Particle* part_arr, int particle_partition_start,
             part_arr[part_index].acceleration.x = dbl_buf[SYNC_ACC_X];
             part_arr[part_index].acceleration.y = dbl_buf[SYNC_ACC_Y];
 
-            insert_particle(particle_hash_map, &part_arr[part_index], params, recv_extent);
+            insert_particle(particle_hash_map, &part_arr[part_index], params, partition_extent);
 
         // if particle is in the dependency extent, sync without deleting the particle
-        } else if ((depend_extent.x <= dbl_buf[0] && dbl_buf[0] < depend_extent.w + depend_extent.x)
-            && (depend_extent.y <= dbl_buf[1] && dbl_buf[1] < depend_extent.h + depend_extent.y))
+        } else if (IN_EXTENT_X(dbl_buf[SYNC_POS_X], depend_extent) && IN_EXTENT_Y(dbl_buf[SYNC_POS_Y], depend_extent))
         {
             // assert that particle is not in recv_extent
-            assert(recv_extent.x <= dbl_buf[0] && dbl_buf[0] < recv_extent.w + depend_extent.x);
-            assert(recv_extent.y <= dbl_buf[1] && dbl_buf[1] < recv_extent.h + depend_extent.y);
+            assert(!IN_EXTENT_X(dbl_buf[SYNC_POS_X], partition_extent));
+            assert(!IN_EXTENT_Y(dbl_buf[SYNC_POS_Y], partition_extent));
+
+            int part_start = sender_rank * params->n_particles;
+            int part_len = params->n_particles;
 
             // assert particle is a valid index in part_arr and part_arr[part_index]
-            assert(particle_partition_start <= part_index);
-            assert(part_index < particle_partition_start + particle_partition_len);
+            // this shouldn't hold
+            assert(part_start <= part_index);
+            assert(part_index < part_start + part_len);
 
             // assert(part.invalid => part.depend);
             assert((!part_arr[part_index].invalid && part_arr[part_index].depend) || part_arr[part_index].invalid);
@@ -160,109 +172,66 @@ sync_receive(Particle* part_arr, int particle_partition_start,
 }
 
 int
-sync_all(int rank, Particle* part_arr, int particle_partition_start,
-        int particle_partiton_len, Particles* hash_map, Extent depend_extent,
-        Extent partition_extent, Simulator_Params* params)
+sync_all(int rank, Particle* part_arr, Particles* hash_map,
+        Simulator_Params* params)
 {
-    Extent d1, d2, d3, d4;
-    Extent r1, r2, r3, r4;
-    sync_init(0, params, &d1, &r1);
-    sync_init(1, params, &d2, &r2);
-    sync_init(2, params, &d3, &r3);
-    sync_init(3, params, &d4, &r4);
-
     int delta_particles = 0;
 
     switch (rank) {
         case 0:
             // sync(0, 1)
-            delta_particles -= sync_send(part_arr, params->n_particles, 1,
-                    d2, r2);
-            delta_particles += sync_receive(part_arr, particle_partition_start,
-                    particle_partiton_len, hash_map, 1, d1,
-                    r1, params);
+            delta_particles -= sync_send(part_arr, params->n_particles, 1);
+            delta_particles += sync_receive(part_arr, hash_map, 1, 0, params);
 
             // sync(0, 2)
-            delta_particles -= sync_send(part_arr, params->n_particles, 2,
-                    d3, r3);
-            delta_particles += sync_receive(part_arr, particle_partition_start,
-                    particle_partiton_len, hash_map, 2, d1,
-                    r1, params);
+            delta_particles -= sync_send(part_arr, params->n_particles, 2);
+            delta_particles += sync_receive(part_arr, hash_map, 2, 0, params);
 
             // sync(0, 3)
-            delta_particles -= sync_send(part_arr, params->n_particles, 3,
-                    d4, r4);
-            delta_particles += sync_receive(part_arr, particle_partition_start,
-                    particle_partiton_len, hash_map, 3, d1,
-                    r1, params);
+            delta_particles -= sync_send(part_arr, params->n_particles, 3);
+            delta_particles += sync_receive(part_arr, hash_map, 3, 0, params);
             break;
+
         case 1:
             // sync(1, 0)
-            delta_particles += sync_receive(part_arr, particle_partition_start,
-                    particle_partiton_len, hash_map, 0, d2,
-                    r2, params);
-            delta_particles -= sync_send(part_arr, params->n_particles, 0,
-                    d1, r1);
+            delta_particles += sync_receive(part_arr, hash_map, 0, 1, params);
+            delta_particles -= sync_send(part_arr, params->n_particles, 0);
 
             // sync(1, 3)
-            delta_particles += sync_receive(part_arr, particle_partition_start,
-                    particle_partiton_len, hash_map, 3, d2,
-                    r2, params);
-            delta_particles -= sync_send(part_arr, params->n_particles, 3,
-                    d4, r4);
+            delta_particles += sync_receive(part_arr, hash_map, 3, 1, params);
+            delta_particles -= sync_send(part_arr, params->n_particles, 3);
 
             // sync(1, 2)
-            delta_particles += sync_receive(part_arr, particle_partition_start,
-                    particle_partiton_len, hash_map, 2, d2,
-                    r2, params);
-            delta_particles -= sync_send(part_arr, params->n_particles, 2,
-                    d3, r3);
+            delta_particles += sync_receive(part_arr, hash_map, 2, 1, params);
+            delta_particles -= sync_send(part_arr, params->n_particles, 2);
             break;
 
         case 2:
             // sync(2, 3)
-            delta_particles -= sync_send(part_arr, params->n_particles, 3,
-                    d4, r4);
-            delta_particles += sync_receive(part_arr, particle_partition_start,
-                    particle_partiton_len, hash_map, 3, d3,
-                    r3, params);
+            delta_particles -= sync_send(part_arr, params->n_particles, 3);
+            delta_particles += sync_receive(part_arr, hash_map, 3, 2, params);
 
             // sync(2, 0)
-            delta_particles += sync_receive(part_arr, particle_partition_start,
-                    particle_partiton_len, hash_map, 0, d3,
-                    r3, params);
-            delta_particles -= sync_send(part_arr, params->n_particles, 0,
-                    d1, r1);
+            delta_particles += sync_receive(part_arr, hash_map, 0, 2, params);
+            delta_particles -= sync_send(part_arr, params->n_particles, 0);
 
             // sync(2, 1)
-            delta_particles -= sync_send(part_arr, params->n_particles, 1,
-                    d2, r2);
-            delta_particles += sync_receive(part_arr, particle_partition_start,
-                    particle_partiton_len, hash_map, 1, d3,
-                    r3, params);
+            delta_particles -= sync_send(part_arr, params->n_particles, 1);
+            delta_particles += sync_receive(part_arr, hash_map, 1, 2, params);
             break;
 
         case 3:
-            // sync(2, 3)
-            delta_particles += sync_receive(part_arr, particle_partition_start,
-                    particle_partiton_len, hash_map, 2, d4,
-                    r4, params);
-            delta_particles -= sync_send(part_arr, params->n_particles, 2,
-                    d3, r3);
+            // sync(3, 2)
+            delta_particles += sync_receive(part_arr, hash_map, 2, 3, params);
+            delta_particles -= sync_send(part_arr, params->n_particles, 2);
 
             // sync(3, 1)
-            delta_particles -= sync_send(part_arr, params->n_particles, 1,
-                    d2, r2);
-            delta_particles += sync_receive(part_arr, particle_partition_start,
-                    particle_partiton_len, hash_map, 1, d4,
-                    r4, params);
+            delta_particles -= sync_send(part_arr, params->n_particles, 1);
+            delta_particles += sync_receive(part_arr, hash_map, 1, 3, params);
 
             // sync(3, 0)
-            delta_particles += sync_receive(part_arr, particle_partition_start,
-                    particle_partiton_len, hash_map, 0, d4,
-                    r4, params);
-            delta_particles -= sync_send(part_arr, params->n_particles, 0,
-                    d1, r1);
+            delta_particles += sync_receive(part_arr, hash_map, 0, 3, params);
+            delta_particles -= sync_send(part_arr, params->n_particles, 0);
             break;
     }
 
@@ -271,9 +240,11 @@ sync_all(int rank, Particle* part_arr, int particle_partition_start,
 }
 
 void
-sync_init(int rank, Simulator_Params* params, Extent* depend_extent_ret, Extent* partition_extent_ret)
+sync_init(Simulator_Params* params, Extent* depend_extent_ret,
+        Extent* partition_extent_ret)
 {
-    assert(rank < 4);
+    assert(params->self_rank < 4);
+
     partition_extent_arr[0].x = 0.0;
     partition_extent_arr[0].y = 0.0;
     partition_extent_arr[0].w = params->n_cells_x * params->grid_length / 2;
@@ -310,6 +281,6 @@ sync_init(int rank, Simulator_Params* params, Extent* depend_extent_ret, Extent*
     depend_extent_arr[3].y -= params->grid_length;
     depend_extent_arr[3].h += params->grid_length;
 
-    *depend_extent_ret = depend_extent_arr[rank];
-    *partition_extent_ret = partition_extent_arr[rank];
+    *depend_extent_ret = depend_extent_arr[params->self_rank];
+    *partition_extent_ret = partition_extent_arr[params->self_rank];
 }

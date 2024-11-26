@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <mpi.h>
+#include <stdio.h>
 
 #include "common.h"
 #include "Particle.h"
@@ -59,7 +60,7 @@ one_step(Particles* particles, Particle* part_arr, Simulator_Params* params, Ext
     }
 
     for (int i = 0; i < params->n_particles; i++) {
-        if (!part_arr[i].invalid) {
+        if (!part_arr[i].invalid || part_arr[i].depend) {
             part_arr[i].velocity.x += params->time_step
                 * part_arr[i].acceleration.x;
             part_arr[i].velocity.y += params->time_step
@@ -99,22 +100,21 @@ main(int argc, char** argv)
     params.n_cells_x = 64;
     params.n_cells_y = 36;
     params.grid_length = 120;
-    params.n_iterations = 10'000;
+    params.n_iterations = 100'000;
 
     MPI_Init(&argc, &argv);
 
-    int rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_rank(MPI_COMM_WORLD, &params.self_rank);
 
     Extent partition_extent, depend_extent;
-    sync_init(rank, &params, &partition_extent, &depend_extent);
+    sync_init(&params, &depend_extent, &partition_extent);
 
     Particle* particles = new Particle[params.n_particles*4];
 
     Particles part_hash_map;
     part_hash_map.buckets = new Particle*[params.n_cells_x * params.n_cells_y];
 
-    init_particles(particles, &part_hash_map, partition_extent, &params, rank);
+    init_particles(particles, &part_hash_map, partition_extent, &params);
 
     /*
      * I discussed in tutorial with John creating a function that runs this loop
@@ -122,12 +122,16 @@ main(int argc, char** argv)
      * it ruins readability
      */
     for (int i = 0; i < params.n_iterations; i++) {
+        if (params.self_rank == 0)
+            printf("\x1b[10D[%d/%d]\n\x1b[1A", i+1, params.n_iterations);
+
         one_step(&part_hash_map, particles, &params, partition_extent);
-        sync_all(rank, particles, rank * params.n_particles,
-                params.n_particles, &part_hash_map, depend_extent,
-                partition_extent, &params);
+        sync_all(params.self_rank, particles, &part_hash_map, &params);
     }
 
     MPI_Finalize();
+
+    if (params.self_rank == 0)
+        printf("\n");
     return 0;
 }

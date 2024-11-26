@@ -14,9 +14,8 @@
 #define SYNC_ACC_X 4
 #define SYNC_ACC_Y 5
 
-void sync_init(int rank, Simulator_Params* params, Extent* depend_extent_ret,
-        Extent* recv_extent_ret);
+int sync_all(int rank, Particle* part_arr, Particles* hash_map,
+        Simulator_Params* params);
 
-int sync_all(int rank, Particle* part_arr, int particle_partition_start,
-        int particle_partiton_len, Particles* hash_map, Extent depend_extent,
-        Extent partition_extent, Simulator_Params* params);
+void sync_init(Simulator_Params* params, Extent* depend_extent_ret,
+        Extent* partition_extent_ret);

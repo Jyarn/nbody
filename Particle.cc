@@ -140,12 +140,12 @@ move_particle(Particles* particles, Particle* part, Simulator_Params* params,
 }
 
 void
-init_particles(Particle* part_arr, Particles* part_hash_map, Extent partition_extent, Simulator_Params* params, int rank)
+init_particles(Particle* part_arr, Particles* part_hash_map, Extent partition_extent, Simulator_Params* params)
 {
-    int part_start = rank * params->n_particles;
+    int part_start = params->self_rank * params->n_particles;
     int part_end = part_start + params->n_particles;
 
-    srand(params->seed * (rank+1));
+    srand(params->seed * (params->self_rank + 1));
 
     for (int i = 0; i < params->n_cells_y * params->n_cells_x; i++)
         part_hash_map->buckets[i] = NULL;

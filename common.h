@@ -14,6 +14,7 @@ typedef struct {
     int n_cells_x, n_cells_y;
     double grid_length;
     int n_iterations;
+    int self_rank;
 } Simulator_Params;
 
 typedef struct {
