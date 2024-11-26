@@ -4,6 +4,8 @@
 #include <mpi.h>
 
 static int iter_no = 0;
+static Extent depend_extent_arr[4];
+static Extent partition_extent_arr[4];
 
 void
 send_particle(int index, Particle part, int recv_rank)
@@ -269,51 +271,45 @@ sync_all(int rank, Particle* part_arr, int particle_partition_start,
 }
 
 void
-sync_init(int rank, Simulator_Params* params, Extent* depend_extent_ret, Extent* recv_extent_ret)
+sync_init(int rank, Simulator_Params* params, Extent* depend_extent_ret, Extent* partition_extent_ret)
 {
-    switch (rank) {
-        case 0:
-            recv_extent_ret->x = 0.0;
-            recv_extent_ret->y = 0.0;
-            recv_extent_ret->w = params->n_cells_x * params->grid_length / 2;
-            recv_extent_ret->h = params->n_cells_y * params->grid_length / 2;
-            *depend_extent_ret = *recv_extent_ret;
-            depend_extent_ret->w += params->grid_length;
-            depend_extent_ret->h += params->grid_length;
-            break;
+    assert(rank < 4);
+    partition_extent_arr[0].x = 0.0;
+    partition_extent_arr[0].y = 0.0;
+    partition_extent_arr[0].w = params->n_cells_x * params->grid_length / 2;
+    partition_extent_arr[0].h = params->n_cells_y * params->grid_length / 2;
+    depend_extent_arr[0] = partition_extent_arr[0];
+    depend_extent_arr[0].w += params->grid_length;
+    depend_extent_arr[0].h += params->grid_length;
 
-        case 1:
-            recv_extent_ret->x = 0.0;
-            recv_extent_ret->y = params->n_cells_y * params->grid_length / 2;
-            recv_extent_ret->w = params->n_cells_x * params->grid_length / 2;
-            recv_extent_ret->h = params->n_cells_y * params->grid_length / 2;
-            *depend_extent_ret = *recv_extent_ret;
-            depend_extent_ret->y -= params->grid_length;
-            depend_extent_ret->h += params->grid_length;
-            depend_extent_ret->w += params->grid_length;
-            break;
+    partition_extent_arr[1].x = 0.0;
+    partition_extent_arr[1].y = params->n_cells_y * params->grid_length / 2;
+    partition_extent_arr[1].w = params->n_cells_x * params->grid_length / 2;
+    partition_extent_arr[1].h = params->n_cells_y * params->grid_length / 2;
+    depend_extent_arr[1] = partition_extent_arr[1];
+    depend_extent_arr[1].y -= params->grid_length;
+    depend_extent_arr[1].h += params->grid_length;
+    depend_extent_arr[1].w += params->grid_length;
 
-        case 2:
-            recv_extent_ret->x = params->n_cells_x * params->grid_length / 2;
-            recv_extent_ret->y = 0.0;
-            recv_extent_ret->w = params->n_cells_x * params->grid_length / 2;
-            recv_extent_ret->h = params->n_cells_y * params->grid_length / 2;
-            *depend_extent_ret = *recv_extent_ret;
-            depend_extent_ret->x -= params->grid_length;
-            depend_extent_ret->w += params->grid_length;
-            depend_extent_ret->h += params->grid_length;
-            break;
+    partition_extent_arr[2].x = params->n_cells_x * params->grid_length / 2;
+    partition_extent_arr[2].y = 0.0;
+    partition_extent_arr[2].w = params->n_cells_x * params->grid_length / 2;
+    partition_extent_arr[2].h = params->n_cells_y * params->grid_length / 2;
+    depend_extent_arr[2] = partition_extent_arr[2];
+    depend_extent_arr[2].x -= params->grid_length;
+    depend_extent_arr[2].w += params->grid_length;
+    depend_extent_arr[2].h += params->grid_length;
 
-        case 3:
-            recv_extent_ret->x = params->n_cells_x * params->grid_length / 2;
-            recv_extent_ret->y = params->n_cells_y * params->grid_length / 2;
-            recv_extent_ret->w = params->n_cells_x * params->grid_length / 2;
-            recv_extent_ret->h = params->n_cells_y * params->grid_length / 2;
-            *depend_extent_ret = *recv_extent_ret;
-            depend_extent_ret->x -= params->grid_length;
-            depend_extent_ret->w += params->grid_length;
-            depend_extent_ret->y -= params->grid_length;
-            depend_extent_ret->h += params->grid_length;
-            break;
-    }
+    partition_extent_arr[3].x = params->n_cells_x * params->grid_length / 2;
+    partition_extent_arr[3].y = params->n_cells_y * params->grid_length / 2;
+    partition_extent_arr[3].w = params->n_cells_x * params->grid_length / 2;
+    partition_extent_arr[3].h = params->n_cells_y * params->grid_length / 2;
+    depend_extent_arr[3] = partition_extent_arr[3];
+    depend_extent_arr[3].x -= params->grid_length;
+    depend_extent_arr[3].w += params->grid_length;
+    depend_extent_arr[3].y -= params->grid_length;
+    depend_extent_arr[3].h += params->grid_length;
+
+    *depend_extent_ret = depend_extent_arr[rank];
+    *partition_extent_ret = partition_extent_arr[rank];
 }
