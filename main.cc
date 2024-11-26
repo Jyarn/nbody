@@ -126,7 +126,7 @@ main(int argc, char** argv)
             printf("\x1b[10D[%d/%d]\n\x1b[1A", i+1, params.n_iterations);
 
         one_step(&part_hash_map, particles, &params, partition_extent);
-        sync_all(params.self_rank, particles, &part_hash_map, &params);
+        sync_all(particles, &part_hash_map, &params);
     }
 
     MPI_Finalize();

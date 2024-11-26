@@ -33,7 +33,7 @@ sync_terminate_connection(int recv_rank)
 }
 
 int
-sync_send(Particle* part_arr, int n, int recv_rank)
+sync_send(Particle* part_arr, int recv_rank, Simulator_Params* params)
 {
     Particle part_i;
     Vector part_pos;
@@ -43,7 +43,7 @@ sync_send(Particle* part_arr, int n, int recv_rank)
     partition_extent = partition_extent_arr[recv_rank];
     depend_extent = partition_extent_arr[recv_rank];
 
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < params->n_particles; i++) {
         part_i = part_arr[i];
         part_pos = part_i.position;
 
@@ -71,6 +71,8 @@ sync_send(Particle* part_arr, int n, int recv_rank)
 
         } else if (IN_EXTENT_X(part_pos.x, depend_extent) && IN_EXTENT_Y(part_pos.y, depend_extent)) {
             assert(!part_i.invalid);
+            assert(IN_EXTENT_X(part_pos.x, partition_extent_arr[params->self_rank]));
+            assert(IN_EXTENT_Y(part_pos.y, partition_extent_arr[params->self_rank]));
             send_particle(i, part_i, recv_rank);
         }
     }
@@ -80,7 +82,7 @@ sync_send(Particle* part_arr, int n, int recv_rank)
 }
 
 bool
-sync_receive_particle(Particle* part_arr, int sender_rank, int* index_ret, double* dbl_ret)
+sync_receive_particle(int sender_rank, int* index_ret, double* dbl_ret)
 {
     MPI_Status status;
     int err = MPI_Recv(index_ret, 1, MPI_INT, sender_rank, iter_no, MPI_COMM_WORLD, &status);
@@ -98,18 +100,18 @@ sync_receive_particle(Particle* part_arr, int sender_rank, int* index_ret, doubl
 
 int
 sync_receive(Particle* part_arr, Particles* particle_hash_map, int sender_rank,
-        int recv_rank, Simulator_Params* params)
+        Simulator_Params* params)
 {
     int part_index = -1;
     double dbl_buf[6] = { 0, 0, 0, 0, 0, 0 };
     int n_particles_gained = 0;
 
     Extent partition_extent, depend_extent;
-    partition_extent = partition_extent_arr[recv_rank];
-    depend_extent = depend_extent_arr[recv_rank];
+    partition_extent = partition_extent_arr[params->self_rank];
+    depend_extent = depend_extent_arr[params->self_rank];
 
     while (true) {
-        if (!sync_receive_particle(part_arr, sender_rank, &part_index, dbl_buf))
+        if (!sync_receive_particle(sender_rank, &part_index, dbl_buf))
             break;
 
         if (IN_EXTENT_X(dbl_buf[SYNC_POS_X], partition_extent) && IN_EXTENT_Y(dbl_buf[SYNC_POS_Y], partition_extent))
@@ -172,66 +174,65 @@ sync_receive(Particle* part_arr, Particles* particle_hash_map, int sender_rank,
 }
 
 int
-sync_all(int rank, Particle* part_arr, Particles* hash_map,
-        Simulator_Params* params)
+sync_all(Particle* part_arr, Particles* hash_map, Simulator_Params* params)
 {
     int delta_particles = 0;
 
-    switch (rank) {
+    switch (params->self_rank) {
         case 0:
             // sync(0, 1)
-            delta_particles -= sync_send(part_arr, params->n_particles, 1);
-            delta_particles += sync_receive(part_arr, hash_map, 1, 0, params);
+            delta_particles -= sync_send(part_arr, 1, params);
+            delta_particles += sync_receive(part_arr, hash_map, 1, params);
 
             // sync(0, 2)
-            delta_particles -= sync_send(part_arr, params->n_particles, 2);
-            delta_particles += sync_receive(part_arr, hash_map, 2, 0, params);
+            delta_particles -= sync_send(part_arr, 2, params);
+            delta_particles += sync_receive(part_arr, hash_map, 2, params);
 
             // sync(0, 3)
-            delta_particles -= sync_send(part_arr, params->n_particles, 3);
-            delta_particles += sync_receive(part_arr, hash_map, 3, 0, params);
+            delta_particles -= sync_send(part_arr, 3, params);
+            delta_particles += sync_receive(part_arr, hash_map, 3, params);
             break;
 
         case 1:
             // sync(1, 0)
-            delta_particles += sync_receive(part_arr, hash_map, 0, 1, params);
-            delta_particles -= sync_send(part_arr, params->n_particles, 0);
+            delta_particles += sync_receive(part_arr, hash_map, 0, params);
+            delta_particles -= sync_send(part_arr, 0, params);
 
             // sync(1, 3)
-            delta_particles += sync_receive(part_arr, hash_map, 3, 1, params);
-            delta_particles -= sync_send(part_arr, params->n_particles, 3);
+            delta_particles += sync_receive(part_arr, hash_map, 3, params);
+            delta_particles -= sync_send(part_arr, 3, params);
 
             // sync(1, 2)
-            delta_particles += sync_receive(part_arr, hash_map, 2, 1, params);
-            delta_particles -= sync_send(part_arr, params->n_particles, 2);
+            delta_particles += sync_receive(part_arr, hash_map, 2, params);
+            delta_particles -= sync_send(part_arr, 2, params);
             break;
 
         case 2:
             // sync(2, 3)
-            delta_particles -= sync_send(part_arr, params->n_particles, 3);
-            delta_particles += sync_receive(part_arr, hash_map, 3, 2, params);
+            delta_particles -= sync_send(part_arr, 3, params);
+            delta_particles += sync_receive(part_arr, hash_map, 3, params);
 
             // sync(2, 0)
-            delta_particles += sync_receive(part_arr, hash_map, 0, 2, params);
-            delta_particles -= sync_send(part_arr, params->n_particles, 0);
+            delta_particles += sync_receive(part_arr, hash_map, 0, params);
+            delta_particles -= sync_send(part_arr, 0, params);
 
             // sync(2, 1)
-            delta_particles -= sync_send(part_arr, params->n_particles, 1);
-            delta_particles += sync_receive(part_arr, hash_map, 1, 2, params);
+            delta_particles -= sync_send(part_arr, 1, params);
+            delta_particles += sync_receive(part_arr, hash_map, 1, params);
             break;
 
         case 3:
             // sync(3, 2)
-            delta_particles += sync_receive(part_arr, hash_map, 2, 3, params);
-            delta_particles -= sync_send(part_arr, params->n_particles, 2);
+            delta_particles += sync_receive(part_arr, hash_map, 2, params);
+            delta_particles -= sync_send(part_arr, 2, params);
 
             // sync(3, 1)
-            delta_particles -= sync_send(part_arr, params->n_particles, 1);
-            delta_particles += sync_receive(part_arr, hash_map, 1, 3, params);
+            delta_particles -= sync_send(part_arr, 1, params);
+            delta_particles += sync_receive(part_arr, hash_map, 1, params);
 
             // sync(3, 0)
-            delta_particles += sync_receive(part_arr, hash_map, 0, 3, params);
-            delta_particles -= sync_send(part_arr, params->n_particles, 0);
+            delta_particles += sync_receive(part_arr, hash_map, 0, params);
+            delta_particles -= sync_send(part_arr, 0, params);
             break;
     }
 

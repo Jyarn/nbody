@@ -14,7 +14,7 @@
 #define SYNC_ACC_X 4
 #define SYNC_ACC_Y 5
 
-int sync_all(int rank, Particle* part_arr, Particles* hash_map,
+int sync_all(Particle* part_arr, Particles* hash_map,
         Simulator_Params* params);
 
 void sync_init(Simulator_Params* params, Extent* depend_extent_ret,
