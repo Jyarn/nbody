@@ -37,3 +37,7 @@ void remove_particle(Particles* particles, Particle* part,
 void move_particle(Particles* particles, Particle* part,
         Simulator_Params* params, Extent partition_extent,
         double new_x, double new_y);
+
+void init_particles(Particle* part_arr, Particles* part_hash_map,
+        Extent partition_extent, Simulator_Params* params, int rank);
+

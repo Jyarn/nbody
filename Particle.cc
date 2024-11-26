@@ -2,8 +2,7 @@
 #include "common.h"
 
 #include <assert.h>
-
-#define NULL 0x0
+#include <stdlib.h>
 
 Particle_Bucket*
 get_bucket(Simulator_Params* params, Particles* particles, int x, int y)
@@ -61,32 +60,6 @@ insert_particle(Particles* particles, Particle* part, Simulator_Params* params, 
     return 0;
 }
 
-/*
-void
-remove_particle(Particle* particle)
-{
-    assert(!particle->invalid);
-
-    if (particle->next) {
-        // check particle is not head and particle is not the only element in bucket
-        assert(particle && particle->next && particle->prev);
-        particle->next->prev = particle->prev;
-        particle->prev->next = particle->next;
-
-        // check integrity
-        assert(particle->next->prev->next == particle->next);
-        assert(particle->prev->next->prev == particle->prev);
-
-    } else {
-        particle->prev->next = NULL;
-    }
-
-   particle->next = NULL;
-   particle->prev = NULL;
-   particle->invalid = true;
-}
-*/
-
 void
 remove_particle(Particles* particles, Particle* part, Simulator_Params* params,
         Extent partition_extent)
@@ -139,6 +112,7 @@ move_particle(Particles* particles, Particle* part, Simulator_Params* params,
     int x_index = BUCKET_X(part->position.x);
     int y_index = BUCKET_Y(part->position.y);
 
+    assert(0 <= x_index && x_index < params->n_cells_x && 0 <= y_index && y_index < params->n_cells_y);
     assert(IN_EXTENT_X(part->position.x, partition_extent));
     assert(IN_EXTENT_Y(part->position.y, partition_extent));
     assert(IN_EXTENT_X(new_x, partition_extent));
@@ -162,5 +136,44 @@ move_particle(Particles* particles, Particle* part, Simulator_Params* params,
         // update position
         part->position.x = new_x;
         part->position.y = new_y;
+    }
+}
+
+void
+init_particles(Particle* part_arr, Particles* part_hash_map, Extent partition_extent, Simulator_Params* params, int rank)
+{
+    int part_start = rank * params->n_particles;
+    int part_end = part_start + params->n_particles;
+
+    srand(params->seed * (rank+1));
+
+    for (int i = 0; i < params->n_cells_y * params->n_cells_x; i++)
+        part_hash_map->buckets[i] = NULL;
+
+    for (int i = 0; i < params->n_particles * 4; i++) {
+        if (part_start <= i && i < part_end) {
+            part_arr[i].mass = rand();
+            part_arr[i].position.x = static_cast<double>((rand() % static_cast<int>(partition_extent.w)) + partition_extent.x);
+            part_arr[i].position.y = static_cast<double>((rand() % static_cast<int>(partition_extent.h)) + partition_extent.y);
+            part_arr[i].velocity.x = 0;
+            part_arr[i].velocity.y = 0;
+            part_arr[i].prev = NULL;
+            part_arr[i].next = NULL;
+            part_arr[i].invalid = true;
+            part_arr[i].depend = false;
+
+            insert_particle(part_hash_map, &part_arr[i], params, partition_extent);
+            part_arr[i].mass = rand();
+
+        } else {
+            part_arr[i].position.x = -1;
+            part_arr[i].position.y = -1;
+            part_arr[i].velocity.x = 0;
+            part_arr[i].velocity.y = 0;
+            part_arr[i].prev = NULL;
+            part_arr[i].next = NULL;
+            part_arr[i].invalid = true;
+            part_arr[i].depend = false;
+        }
     }
 }
