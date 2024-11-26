@@ -7,7 +7,7 @@ LDFLAGS=
 build: $(EXE)
 
 val: $(EXE)
-	mpirun -n 2 valgrind --suppressions=/usr/share/openmpi/openmpi-valgrind.supp $(EXE)
+	mpirun -n 2 valgrind --suppressions=/usr/share/openmpi/openmpi-valgrind.supp ./$(EXE)
 
 view_dump: view_dump.cc
 	g++ -O3 -lraylib -Wall -Wextra -Wpedantic view_dump.cc -o view_dump
