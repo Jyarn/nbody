@@ -1,6 +1,5 @@
 #include <cmath>
 #include <stdlib.h>
-#include <raylib.h>
 #include <unistd.h>
 #include <stdint.h>
 #include <mpi.h>
@@ -18,7 +17,6 @@ compute_acceleration_for_bucket(Particle_Bucket* bucket, Particle* part_i, doubl
 {
     assert(part_i);
     assert(!part_i->depend);
-
 
     if (bucket) {
         double acc_x = 0; double acc_y = 0;
@@ -139,17 +137,10 @@ main(int argc, char** argv)
      * it ruins readability
      */
     for (int i = 0; i < params.n_iterations; i++) {
-        // print simple progress bar
-        if (params.self_rank == 0)
-            printf("\x1b[10D[%d/%d]\n\x1b[1A", i+1, params.n_iterations);
-
         one_step(&part_hash_map, particles, &params, partition_extent);
         sync_all(particles, &part_hash_map, &params);
     }
 
     MPI_Finalize();
-
-    if (params.self_rank == 0)
-        printf("\n");
     return 0;
 }
