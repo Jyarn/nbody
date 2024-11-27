@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define ARR_THRESHOLD 4
+#define ARR_THRESHOLD 2
 
 Particle_Bucket*
 get_bucket(Simulator_Params* params, Particles* particles, int x, int y)

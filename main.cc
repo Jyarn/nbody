@@ -9,8 +9,9 @@
 
 #include "common.h"
 #include "Particle.h"
-#include "equations.h"
 #include "io.h"
+
+#define G 6.67e-11
 
 void
 compute_acceleration_for_bucket(Particle_Bucket* bucket, Particle* part_i, double smooth)
@@ -18,9 +19,33 @@ compute_acceleration_for_bucket(Particle_Bucket* bucket, Particle* part_i, doubl
     assert(part_i);
     assert(!part_i->depend);
 
-    if (bucket)
-        for (int j = 0; j < bucket->size; j++)
-            calculate_acceleration(part_i, bucket->arr[j], smooth);
+
+    if (bucket) {
+        double acc_x = 0; double acc_y = 0;
+        double part_i_x = part_i->position.x;
+        double part_i_y = part_i->position.y;
+
+        #pragma omp parallel for default(none) shared(bucket) firstprivate(part_i_x, part_i_y, smooth) reduction(+:acc_x, acc_y)
+        for (int j = 0; j < bucket->size; j++) {
+            Particle* part_j = bucket->arr[j];
+            Vector r;
+            r.x = part_j->position.x - part_i_x;
+            r.y = part_j->position.y - part_i_y;
+
+            assert(r.x <= 240);
+            assert(r.y <= 240);
+
+            double mass = part_j->mass;
+            double r_norm = std::sqrt(r.x*r.x + r.y*r.y) + smooth;
+            double r_norm_cubed = r_norm * r_norm * r_norm;
+
+            acc_x += G * mass * r.x / r_norm_cubed;
+            acc_y += G * mass * r.y / r_norm_cubed;
+        }
+
+        part_i->acceleration.x += acc_x;
+        part_i->acceleration.y += acc_y;
+    }
 }
 
 void

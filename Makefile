@@ -1,5 +1,5 @@
 EXE=nbody_
-OBJ=main.o Particle.o equations.o io.o
+OBJ=main.o Particle.o io.o
 CC=mpic++
 CXXFLAGS=-O3 -Wall -Wextra -Wpedantic -fopenmp
 LDFLAGS=
