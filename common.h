@@ -1,5 +1,7 @@
 #pragma once
 
+#include <assert.h>
+
 typedef struct {
     double x, y;
 } Vector;

@@ -1,6 +1,5 @@
 #include "io.h"
 
-#include <assert.h>
 #include <mpi.h>
 
 static int iter_no = 0;

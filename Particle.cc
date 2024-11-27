@@ -1,7 +1,6 @@
 #include "Particle.h"
 #include "common.h"
 
-#include <assert.h>
 #include <stdlib.h>
 
 Particle_Bucket*

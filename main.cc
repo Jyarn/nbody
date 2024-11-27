@@ -2,10 +2,10 @@
 #include <stdlib.h>
 #include <raylib.h>
 #include <unistd.h>
-#include <assert.h>
 #include <stdint.h>
 #include <mpi.h>
 #include <stdio.h>
+#include <omp.h>
 
 #include "common.h"
 #include "Particle.h"
@@ -33,6 +33,7 @@ compute_acceleration_for_bucket(Particle_Bucket* bucket, Particle* part_i, doubl
 void
 one_step(Particles* particles, Particle* part_arr, Simulator_Params* params, Extent partition_extent)
 {
+    #pragma omp parallel for default(none) shared(particles) firstprivate(partition_extent, params) collapse(2)
     for (int x = 0; x < params->n_cells_x; x++) {
         for (int y = 0; y < params->n_cells_y; y++) {
             Particle_Bucket* this_bucket = get_bucket(params, particles,
@@ -115,6 +116,10 @@ main(int argc, char** argv)
     part_hash_map.buckets = new Particle*[params.n_cells_x * params.n_cells_y];
 
     init_particles(particles, &part_hash_map, partition_extent, &params);
+
+
+    if (params.self_rank == 0)
+        printf("running with %d thread(s)\n", omp_get_max_threads());
 
     /*
      * I discussed in tutorial with John creating a function that runs this loop
