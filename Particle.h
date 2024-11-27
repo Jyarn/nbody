@@ -1,5 +1,6 @@
 #pragma once
 #include <stdbool.h>
+#include <vector>
 
 #include "common.h"
 
@@ -12,10 +13,13 @@ typedef struct particle {
     double mass;
     bool invalid;
     bool depend;
-    struct particle* next, *prev;
+    int part_idx;
 } Particle;
 
-typedef Particle* Particle_Bucket;
+typedef struct {
+    int size, length;
+    Particle** arr;
+} Particle_Bucket;
 
 typedef struct {
     Particle_Bucket* buckets;
