@@ -1,8 +1,8 @@
 EXE=nbody_
-OBJ=main.o Particle.o io.o
+OBJ=main.o Particle.o io.o file_dump.o
 CC=mpic++
 CXXFLAGS=-O3 -Wall -Wextra -Wpedantic -fopenmp
-LDFLAGS=
+LDFLAGS=-lraylib
 
 build: $(EXE)
 
@@ -10,13 +10,14 @@ val: $(EXE)
 	mpirun -n 4 valgrind --track-origins=yes --suppressions=/usr/share/openmpi/openmpi-valgrind.supp ./$(EXE)
 
 view_dump: view_dump.cc
-	g++ -O3 -lraylib -Wall -Wextra -Wpedantic view_dump.cc -o view_dump
+	g++ -g -lraylib -Wall -Wextra -Wpedantic view_dump.cc -o view_dump
 	./view_dump
 
 debug:
 	mpirun -np 4 alacritty -e gdb ./$(EXE)
 
 run: $(EXE)
+	rm -rf *.bin
 	mpirun -n 4 ./$(EXE)
 
 $(EXE): $(OBJ)

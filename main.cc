@@ -5,6 +5,7 @@
 #include <mpi.h>
 #include <stdio.h>
 #include <omp.h>
+#include <raylib.h>
 
 #include "common.h"
 #include "Particle.h"
@@ -23,15 +24,11 @@ compute_acceleration_for_bucket(Particle_Bucket* bucket, Particle* part_i, doubl
         double part_i_x = part_i->position.x;
         double part_i_y = part_i->position.y;
 
-        #pragma omp parallel for default(none) shared(bucket) firstprivate(part_i_x, part_i_y, smooth) reduction(+:acc_x, acc_y)
         for (int j = 0; j < bucket->size; j++) {
             Particle* part_j = bucket->arr[j];
             Vector r;
             r.x = part_j->position.x - part_i_x;
             r.y = part_j->position.y - part_i_y;
-
-            assert(r.x <= 240);
-            assert(r.y <= 240);
 
             double mass = part_j->mass;
             double r_norm = std::sqrt(r.x*r.x + r.y*r.y) + smooth;
@@ -75,8 +72,8 @@ one_step(Particles* particles, Particle* part_arr, Simulator_Params* params, Ext
         }
     }
 
-    for (int i = 0; i < params->n_particles; i++) {
-        if (!part_arr[i].invalid || part_arr[i].depend) {
+    for (int i = 0; i < params->n_particles*4; i++) {
+        if (!part_arr[i].invalid && !part_arr[i].depend) {
             part_arr[i].velocity.x += params->time_step * part_arr[i].acceleration.x;
             part_arr[i].velocity.y += params->time_step * part_arr[i].acceleration.y;
 
@@ -92,9 +89,46 @@ one_step(Particles* particles, Particle* part_arr, Simulator_Params* params, Ext
             } else {
                 remove_particle(particles, &part_arr[i], params,
                         partition_extent);
+                part_arr[i].position.x = new_x;
+                part_arr[i].position.y = new_y;
             }
         }
     }
+}
+
+void
+render_init(Simulator_Params* params)
+{
+    if (params->self_rank != 0)
+        return;
+
+#ifdef __RENDER__
+    InitWindow(480, 480, "nbody");
+    SetTargetFPS(144);
+#endif
+}
+
+void
+render_particles(Simulator_Params* params, Particle* part_arr)
+{
+    if (params->self_rank != 0)
+        return;
+
+    int part_start = params->self_rank*params->n_particles;
+    int part_end = part_start + params->n_particles;
+
+#ifdef __RENDER__
+    BeginDrawing();
+
+    ClearBackground(BLACK);
+    for (int i = 0; i < params->n_particles*4; i++) {
+        DrawCircle(static_cast<int>(part_arr[i].position.x),
+                static_cast<int>(part_arr[i].position.y), 10,
+                part_start <= i && i < part_end ? DARKGREEN : DARKBLUE);
+    }
+
+    EndDrawing();
+#endif
 }
 
 int
@@ -127,9 +161,12 @@ main(int argc, char** argv)
 
     init_particles(particles, &part_hash_map, partition_extent, &params);
 
-
     if (params.self_rank == 0)
         printf("running with %d thread(s)\n", omp_get_max_threads());
+
+    render_init(&params);
+
+    sync_all(particles, &part_hash_map, &params);
 
     /*
      * I discussed in tutorial with John creating a function that runs this loop
@@ -137,10 +174,23 @@ main(int argc, char** argv)
      * it ruins readability
      */
     for (int i = 0; i < params.n_iterations; i++) {
+        if (params.self_rank == 0)
+            printf("\x1b[10D[%d/%d]\n\x1b[1A", i+1, params.n_iterations);
+
         one_step(&part_hash_map, particles, &params, partition_extent);
         sync_all(particles, &part_hash_map, &params);
+        if (i % 100 == 0)
+            render_particles(&params, particles);
     }
 
+    if (params.self_rank == 0)
+        printf("\n");
+
     MPI_Finalize();
+
+#ifdef __RENDER__
+    if (params.self_rank == 0)
+        CloseWindow();
+#endif
     return 0;
 }

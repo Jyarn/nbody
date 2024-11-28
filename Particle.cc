@@ -19,18 +19,12 @@ Particle_Bucket*
 get_particle_bucket(Particles* particles, Particle* part,
         Simulator_Params* params, Extent partition_extent)
 {
-    if (IN_EXTENT_X(part->position.x, partition_extent)
-        && IN_EXTENT_Y(part->position.y, partition_extent))
-    {
-        int x_index = BUCKET_X(part->position.x);
-        int y_index = BUCKET_Y(part->position.y);
-        assert(0 <= x_index && x_index < params->n_cells_x);
-        assert(0 <= y_index && y_index < params->n_cells_y);
+    int x_index = BUCKET_X(part->position.x);
+    int y_index = BUCKET_Y(part->position.y);
+    assert(0 <= x_index && x_index < params->n_cells_x);
+    assert(0 <= y_index && y_index < params->n_cells_y);
 
-        return &particles->buckets[x_index + y_index*params->n_cells_x];
-    }
-
-    return NULL;
+    return &particles->buckets[x_index + y_index*params->n_cells_x];
 }
 
 int
